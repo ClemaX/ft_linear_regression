@@ -14,14 +14,16 @@ LEARNING_RATE = 0.05
 MAX_ITERATIONS = 1000
 COST_TARGET = 0.005
 
-PARAMS_INITIAL = {'theta': [0, 0]}
-
 
 def data_load_standardized(filepath=DATA_FILEPATH):
     df = pd.read_csv(filepath)
-    standardized_df = (df - df.mean()) / df.std()
 
-    return standardized_df
+    mileage_mean = df['km'].mean()
+    mileage_std = df['km'].std()
+
+    df['km'] = (df['km'] - mileage_mean) / mileage_std
+
+    return df, mileage_mean, mileage_std
 
 
 def lerp_color(color_a, color_b, factor):
@@ -40,9 +42,9 @@ def model_error():
     # Calculate params error
     return pd.DataFrame(
         data={
-            'theta': [
+            'theta': (
                 error.mean(),
-                (error * data['km']).mean()],
+                (error * data['km']).mean()),
         }
     )
 
@@ -55,9 +57,9 @@ def model_learn():
     # Calculate deltas
     delta_params = -error * LEARNING_RATE
 
-    params += delta_params
+    params['theta'] += delta_params['theta']
 
-    cost = (error['theta'][0] ** 2 + error['theta'][1] ** 2)**0.5
+    cost = (error['theta'][0] ** 2 + error['theta'][1] ** 2) ** 0.5
 
     return cost
 
@@ -78,6 +80,7 @@ def model_plot(color=None):
 def model_plot_cost():
     cost_line.set_data(epoch_history, cost_history)
     ax_cost.set_xlim(0, max(1, max(epoch_history)))
+    ax_cost.set_ylim(0, max(1, max(cost_history)))
 
 
 def train_step(epoch):
@@ -88,7 +91,7 @@ def train_step(epoch):
     epoch_history.append(epoch)
     cost_history.append(cost)
 
-    model_plot(lerp_color("#50fa7b", "#ff5555", cost))
+    model_plot(lerp_color("#50fa7b", "#ff5555", cost / max(1, max(cost_history))))
 
     model_plot_cost()
 
@@ -100,36 +103,26 @@ def train_step(epoch):
         params_save(params)
 
 
-# Apply theme
-sns.set_theme(
-    style="dark",
-    rc={
-        'figure.facecolor': "#1E1F28",
-        'axes.facecolor': "#282a36",
-        'axes.edgecolor': "#bd93f9",
-        'axes.titlecolor': "#50fa7b",
-        'axes.labelcolor': "#ff79c6",
-        'xtick.color': "#f8f8f2",
-        'ytick.color': "#f8f8f2",
-        'text.color': "#f8f8f2",
-    }
-)
-
 # Load standardized CSV dataset
-data = data_load_standardized()
+data, mileage_mean, mileage_std = data_load_standardized()
 
 # Initialize params
-params = pd.DataFrame(data=PARAMS_INITIAL)
+params = pd.DataFrame(
+    data={
+        'theta': (0, 0),
+        'mileage_mean': (mileage_mean),
+        'mileage_std': (mileage_std),
+    }
+)
 
 # Initialize cost history
 epoch_history = []
 cost_history = []
 
 # Create pyplot figure
-fig, (ax_data, ax_cost) = plt.subplots(2, 1)
+fig, (ax_data, ax_cost) = plt.subplots(2, 1, title="Standardized Car Price by Kilometers")
 
 # Plot dataset
-ax_data.set(title="Standardized Car Price by Kilometers")
 sns.scatterplot(
     ax=ax_data,
     data=data, x='km', y='price', palette="blend:#ff79c6,#8be9fd",
@@ -138,7 +131,6 @@ sns.scatterplot(
 # Plot cost
 cost_line, = ax_cost.plot(epoch_history, cost_history, label="Cost")
 ax_cost.legend()
-ax_cost.set_ylim(0, 1)
 
 # Animate training
 ani = FuncAnimation(fig, train_step, frames=MAX_ITERATIONS, interval=30)
